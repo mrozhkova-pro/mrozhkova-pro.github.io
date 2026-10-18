@@ -110,6 +110,69 @@
         .btn:hover::after {
             left: 120%;
         }
+        .btn-small {
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-size: 14px;
+            font-weight: 800;
+            transform: perspective(520px) rotateX(7deg);
+            background: linear-gradient(135deg, #fff3c8, #ffd54f, #f7c52e, #d4a147, #b47c2a, #d4a147, #ffd54f, #fff3c8);
+            background-size: 300% 300%;
+            animation: btn3dShimmer 6s ease infinite;
+            text-shadow: 0 1px 0 rgba(120, 80, 20, .6), 0 -1px 0 rgba(255, 255, 255, .4);
+            box-shadow:
+                inset 0 2px 0 rgba(255, 255, 255, .75),
+                inset 0 -4px 0 rgba(140, 95, 25, .45),
+                inset 0 0 0 1px rgba(255, 255, 255, .5),
+                0 3px 0 #96682a,
+                0 6px 0 #7d561f,
+                0 10px 18px rgba(120, 85, 28, .4),
+                0 16px 32px rgba(180, 124, 42, .35);
+        }
+        .btn-small::after {
+            animation: btn3dSheen 3.4s ease-in-out infinite;
+        }
+        .btn-small:hover {
+            animation: btn3dShimmer 6s ease infinite, btn3dPulse 1.5s ease-in-out infinite;
+        }
+        .nav .menu a.btn-small:hover {
+            color: #fff;
+        }
+        @keyframes btn3dShimmer {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes btn3dSheen {
+            0% { left: -80%; }
+            55%, 100% { left: 130%; }
+        }
+        @keyframes btn3dPulse {
+            0%, 100% {
+                transform: perspective(520px) rotateX(7deg) translateY(-2px) scale(1);
+                box-shadow:
+                    inset 0 2px 0 rgba(255, 255, 255, .75),
+                    inset 0 -4px 0 rgba(140, 95, 25, .45),
+                    inset 0 0 0 1px rgba(255, 255, 255, .5),
+                    0 3px 0 #96682a,
+                    0 6px 0 #7d561f,
+                    0 12px 22px rgba(180, 124, 42, .5),
+                    0 0 18px rgba(255, 213, 79, .55),
+                    0 0 40px rgba(212, 161, 71, .45);
+            }
+            50% {
+                transform: perspective(520px) rotateX(7deg) translateY(-5px) scale(1.09);
+                box-shadow:
+                    inset 0 2px 0 rgba(255, 255, 255, .9),
+                    inset 0 -4px 0 rgba(140, 95, 25, .4),
+                    inset 0 0 0 1px rgba(255, 255, 255, .7),
+                    0 5px 0 #96682a,
+                    0 9px 0 #7d561f,
+                    0 18px 34px rgba(180, 124, 42, .6),
+                    0 0 34px rgba(255, 213, 79, .95),
+                    0 0 68px rgba(212, 161, 71, .8);
+            }
+        }
         .btn-ghost {
             display: inline-block;
             padding: 12px 26px;
@@ -136,10 +199,11 @@
             left: 0;
             right: 0;
             z-index: 100;
-            background: rgba(255, 255, 255, .92);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid #b2dfdb;
-            box-shadow: 0 6px 28px rgba(0, 80, 80, .10);
+            background: rgba(255, 255, 255, .45);
+            -webkit-backdrop-filter: blur(18px) saturate(160%);
+            backdrop-filter: blur(18px) saturate(160%);
+            border-bottom: 1px solid rgba(255, 255, 255, .55);
+            box-shadow: 0 4px 24px rgba(0, 80, 80, .08);
         }
         .nav-inner {
             display: flex;
@@ -173,9 +237,10 @@
             color: #b47c2a;
         }
         .menu a.active {
-            color: #b47c2a;
-            font-weight: 700;
+            color: #004d54;
+            font-weight: 800;
         }
+        .menu a { font-weight: 800; letter-spacing: 0.01em; }
 
         .hero {
             position: relative;
@@ -382,6 +447,32 @@
         .cta-card p {
             max-width: 640px;
             margin: 0 auto 30px;
+            color: #3e6a70;
+        }
+        .footer-contacts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px 22px;
+            align-items: center;
+            justify-content: center;
+            margin: 0 0 16px;
+        }
+        .footer-contacts .fc-qr {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .footer-contacts .fc-qr img {
+            width: 88px;
+            height: 88px;
+            border-radius: 10px;
+            border: 1px solid #e1f5fe;
+            box-shadow: 0 4px 14px rgba(0, 60, 60, .12);
+            background: #fff;
+        }
+        .footer-contacts .fc-qr span {
+            font-size: 11px;
             color: #3e6a70;
         }
 
@@ -889,8 +980,11 @@
         <div class="container">
             <div class="cta-card reveal">
                 <h2>Хотите такую же программу?</h2>
-                <p>Свяжитесь со мной — обсудим вашу задачу, предложу оптимальную структуру и сроки.</p>
-                <a class="btn" href="mailto:rozhkova.m.i@mail.ru?subject=Запрос%20на%20разработку%20программы&body=Здравствуйте!%0A%0AМне%20нужна%20разработка%20образовательной%20программы.%0A%0AКраткое%20описание%20задачи:">Обсудить проект</a>
+                <p>Свяжитесь со мной — обсудим вашу задачу, предложу оптимальную структуру и сроки. Выберите удобный способ:</p>
+                <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:6px;">
+                    <a class="btn" href="mailto:rozhkova.m.i@mail.ru?subject=Запрос%20на%20разработку%20программы&body=Здравствуйте!%0A%0AМне%20нужна%20разработка%20образовательной%20программы.%0A%0AКраткое%20описание%20задачи:">Электронная почта</a>
+                    <a class="btn" href="https://max.ru/u/f9LHodD0cOKi8YqTa2YK6__hUqagorYE9QUVESKE4iATwD3K4vH93-Zce6o" target="_blank" rel="noopener" style="background:#fff; color:#7a4c1b; border:2px solid #b47c2a; box-shadow:0 8px 24px rgba(180,124,42,.2);">Написать в Max</a>
+                </div>
             </div>
         </div>
     </section>
@@ -900,7 +994,17 @@
             <div style="margin-bottom:8px;">
                 <a href="index.html" style="color:#b47c2a; text-decoration:none; margin:0 10px;">Главная</a>
                 <a href="portfolio.html" style="color:#b47c2a; text-decoration:none; margin:0 10px;">Портфолио</a>
-                <a href="#contact" style="color:#b47c2a; text-decoration:none; margin:0 10px;">Контакты</a>
+                <a href="#contact" style="color:#b47c2a; text-decoration:none; margin:0 10px;">Контакты:</a>
+            </div>
+            <div class="footer-contacts">
+                <span class="fc-qr">
+                    <img src="qr-mail.png" alt="QR-код: написать на почту" loading="lazy" />
+                    <span>Написать на почту</span>
+                </span>
+                <span class="fc-qr">
+                    <img src="qr-max.png" alt="QR-код: написать в Max" loading="lazy" />
+                    <span>Написать в Max</span>
+                </span>
             </div>
             © 2026 M.Rozhkova.Pro. Все права защищены. Разработка образовательных программ.
         </div>
