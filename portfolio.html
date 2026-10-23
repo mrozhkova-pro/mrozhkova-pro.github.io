@@ -649,18 +649,34 @@
             overflow: auto;
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
+            scrollbar-gutter: stable;
             display: flex;
             align-items: flex-start;
             justify-content: flex-start;
             padding: 14px;
         }
-        .modal-body canvas {
-            margin: 0 auto;
-            max-width: none;
-            height: auto;
+        .pdf-pages {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+        }
+        .pdf-pages[hidden] {
+            display: none;
+        }
+        .pdf-page-box {
+            flex: none;
+            position: relative;
+            overflow: hidden;
             background: #fff;
             border-radius: 3px;
             box-shadow: 0 8px 28px rgba(0, 40, 40, .18);
+        }
+        .pdf-page-box canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
         }
         .modal-body iframe {
             flex: 1 1 auto;
@@ -1208,11 +1224,11 @@
                 <span class="pdf-sep"></span>
                 <button class="pdf-btn" id="pdfZoomOut" aria-label="Уменьшить" title="Уменьшить" disabled>&minus;</button>
                 <button class="pdf-btn" id="pdfZoomIn" aria-label="Увеличить" title="Увеличить" disabled>+</button>
-                <button class="pdf-btn pdf-fit" id="pdfFit" aria-label="По ширине экрана" title="По ширине экрана" disabled>По ширине</button>
+                <button class="pdf-btn pdf-fit" id="pdfFit" aria-label="Страница целиком" title="Страница целиком" disabled>Целиком</button>
             </div>
             <div class="modal-body" id="pdfScroll" oncontextmenu="return false">
                 <div class="pdf-loading" id="pdfLoading">Загрузка документа…</div>
-                <canvas id="pdfCanvas" aria-label="Просмотр документа" hidden></canvas>
+                <div class="pdf-pages" id="pdfPages" hidden></div>
                 <iframe id="pdfFrame" title="Просмотр документа" hidden></iframe>
                 <div class="pdf-error" id="pdfError" hidden>
                     <p>Не удалось показать документ на этом устройстве.</p>
@@ -1240,9 +1256,8 @@
         const modal = document.getElementById('modal');
         const modalTitle = document.getElementById('modalTitle');
         const pdfScroll = document.getElementById('pdfScroll');
-        const pdfCanvas = document.getElementById('pdfCanvas');
+        const pdfPages = document.getElementById('pdfPages');
         const pdfFrame = document.getElementById('pdfFrame');
-        const pdfCtx = pdfCanvas.getContext('2d');
         const pdfLoading = document.getElementById('pdfLoading');
         const pdfError = document.getElementById('pdfError');
         const pdfOpenLink = document.getElementById('pdfOpenLink');
@@ -1257,9 +1272,23 @@
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdfjs/pdf.worker.min.js';
         }
 
-        const pdfState = { doc: null, page: 1, pages: 0, zoom: 1, task: null, token: 0, url: '', usingFrame: false };
+        const pdfState = {
+            doc: null,
+            page: 1,
+            pages: 0,
+            zoom: 1,
+            token: 0,
+            renderToken: 0,
+            url: '',
+            usingFrame: false,
+            base: [],
+            boxes: [],
+            rendered: new Map(),
+            rendering: new Map()
+        };
         let scrollLockY = 0;
         let resizeTimer = null;
+        let scrollRaf = 0;
 
         function lockScroll() {
             scrollLockY = window.scrollY || window.pageYOffset || 0;
@@ -1293,13 +1322,33 @@
             if (enabled) updateTools();
         }
 
+        function cancelRenders() {
+            pdfState.renderToken++;
+            pdfState.rendering.forEach(rec => {
+                try { if (rec.task) rec.task.cancel(); } catch (e) {}
+                if (rec.canvas) rec.canvas.remove();
+            });
+            pdfState.rendering.clear();
+            pdfState.rendered.forEach(rec => {
+                if (rec.canvas) rec.canvas.remove();
+            });
+            pdfState.rendered.clear();
+        }
+
+        function getPdfAvailable() {
+            const cs = getComputedStyle(pdfScroll);
+            const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+            const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+            return {
+                w: Math.max(120, pdfScroll.clientWidth - padX),
+                h: Math.max(120, pdfScroll.clientHeight - padY)
+            };
+        }
+
         function resetViewer() {
             pdfState.token++;
             pdfState.usingFrame = false;
-            if (pdfState.task) {
-                try { pdfState.task.cancel(); } catch (e) {}
-                pdfState.task = null;
-            }
+            cancelRenders();
             if (pdfState.doc) {
                 try { pdfState.doc.destroy(); } catch (e) {}
                 pdfState.doc = null;
@@ -1307,10 +1356,10 @@
             pdfState.page = 1;
             pdfState.pages = 0;
             pdfState.zoom = 1;
-            pdfCanvas.hidden = true;
-            pdfCanvas.width = 0;
-            pdfCanvas.height = 0;
-            pdfCtx.setTransform(1, 0, 0, 1, 0, 0);
+            pdfState.base = [];
+            pdfState.boxes = [];
+            pdfPages.innerHTML = '';
+            pdfPages.hidden = true;
             pdfFrame.hidden = true;
             pdfFrame.removeAttribute('src');
             pdfError.hidden = true;
@@ -1330,7 +1379,7 @@
             pdfState.usingFrame = true;
             pdfLoading.hidden = true;
             pdfError.hidden = true;
-            pdfCanvas.hidden = true;
+            pdfPages.hidden = true;
             pdfFrame.hidden = false;
             pdfFrame.src = src;
             pdfPageLabel.textContent = '– / –';
@@ -1346,7 +1395,7 @@
             pdfLoading.hidden = true;
             pdfError.hidden = false;
             pdfOpenLink.href = url || '#';
-            pdfCanvas.hidden = true;
+            pdfPages.hidden = true;
             pdfFrame.hidden = true;
             setTools(false);
         }
@@ -1377,7 +1426,7 @@
                 pdfState.doc = doc;
                 pdfState.pages = doc.numPages;
                 pdfState.page = 1;
-                await renderPage();
+                await buildPages();
             } catch (err) {
                 if (token !== pdfState.token) return;
                 console.error('PDF load error', err);
@@ -1385,55 +1434,161 @@
             }
         }
 
-        async function renderPage() {
+        async function buildPages() {
             const doc = pdfState.doc;
             if (!doc || pdfState.usingFrame) return;
             const token = pdfState.token;
-            if (pdfState.task) {
-                try { pdfState.task.cancel(); } catch (e) {}
-                pdfState.task = null;
+            const bases = [];
+            for (let i = 1; i <= doc.numPages; i++) {
+                const page = await doc.getPage(i);
+                if (token !== pdfState.token || pdfState.usingFrame) return;
+                const vp = page.getViewport({ scale: 1 });
+                bases.push({ page: page, w: vp.width, h: vp.height });
             }
-            pdfLoading.hidden = false;
+            pdfState.base = bases;
+            pdfPages.hidden = false;
+            layoutPages();
+            pdfError.hidden = true;
+        }
+
+        function scrollTopForPage(n) {
+            const box = pdfState.boxes[n - 1];
+            if (!box) return 0;
+            const cs = getComputedStyle(pdfScroll);
+            const padTop = parseFloat(cs.paddingTop) || 0;
+            const boxRect = box.el.getBoundingClientRect();
+            const scrollRect = pdfScroll.getBoundingClientRect();
+            return Math.max(0, pdfScroll.scrollTop + boxRect.top - scrollRect.top - padTop);
+        }
+
+        function scrollToPage(n, smooth) {
+            const box = pdfState.boxes[n - 1];
+            if (!box) return;
+            const top = scrollTopForPage(n);
+            if (smooth) {
+                pdfScroll.scrollTo({ top: top, behavior: 'smooth' });
+            } else {
+                pdfScroll.scrollTop = top;
+            }
+        }
+
+        function layoutPages() {
+            if (!pdfState.base.length || pdfState.usingFrame) return;
+            const current = pdfState.page;
+            cancelRenders();
+            const rt = pdfState.renderToken;
+            const avail = getPdfAvailable();
+            pdfPages.innerHTML = '';
+            pdfState.boxes = [];
+            pdfState.base.forEach((item, idx) => {
+                const scale = Math.min(avail.w / item.w, avail.h / item.h) * pdfState.zoom;
+                const el = document.createElement('div');
+                el.className = 'pdf-page-box';
+                el.dataset.page = String(idx + 1);
+                el.style.width = Math.max(1, Math.floor(item.w * scale)) + 'px';
+                el.style.height = Math.max(1, Math.floor(item.h * scale)) + 'px';
+                pdfPages.appendChild(el);
+                pdfState.boxes.push({ el: el, scale: scale, w: item.w, h: item.h });
+            });
+            pdfScroll.scrollLeft = 0;
+            requestAnimationFrame(() => {
+                if (rt !== pdfState.renderToken || pdfState.usingFrame) return;
+                scrollToPage(current, false);
+                updateTools();
+                scheduleRender();
+            });
+        }
+
+        function currentPageFromScroll() {
+            if (!pdfState.boxes.length) return 1;
+            if (pdfScroll.scrollTop <= 1) return 1;
+            if (pdfScroll.scrollTop + pdfScroll.clientHeight >= pdfScroll.scrollHeight - 2) {
+                return pdfState.pages;
+            }
+            const mid = pdfScroll.getBoundingClientRect().top + pdfScroll.clientHeight / 2;
+            let best = 1;
+            let bestDist = Infinity;
+            pdfState.boxes.forEach((box, idx) => {
+                const r = box.el.getBoundingClientRect();
+                const dist = Math.abs(r.top + r.height / 2 - mid);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = idx + 1;
+                }
+            });
+            return best;
+        }
+
+        function scheduleRender() {
+            if (!pdfState.pages || pdfState.usingFrame) return;
+            const rt = pdfState.renderToken;
+            const cur = pdfState.page;
+            Array.from(pdfState.rendered.keys()).forEach(i => {
+                if (Math.abs(i - cur) > 3) {
+                    const rec = pdfState.rendered.get(i);
+                    if (rec.canvas) rec.canvas.remove();
+                    pdfState.rendered.delete(i);
+                }
+            });
+            const order = [cur, cur - 1, cur + 1, cur - 2, cur + 2];
+            for (let k = 0; k < order.length; k++) {
+                const i = order[k];
+                if (i < 1 || i > pdfState.pages) continue;
+                if (pdfState.rendered.has(i) || pdfState.rendering.has(i)) continue;
+                if (pdfState.rendering.size >= 2) break;
+                renderPageAt(i, rt);
+            }
+        }
+
+        async function renderPageAt(i, rt) {
+            if (rt !== pdfState.renderToken) return;
+            const box = pdfState.boxes[i - 1];
+            const base = pdfState.base[i - 1];
+            if (!box || !base) return;
+            const rec = { task: null, canvas: null };
+            pdfState.rendering.set(i, rec);
             try {
-                const page = await doc.getPage(pdfState.page);
-                if (token !== pdfState.token) return;
-                const base = page.getViewport({ scale: 1 });
-                const cs = getComputedStyle(pdfScroll);
-                const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-                const avail = Math.max(120, pdfScroll.clientWidth - padX);
-                const fitScale = avail / base.width;
-                const viewport = page.getViewport({ scale: fitScale * pdfState.zoom });
+                const viewport = base.page.getViewport({ scale: box.scale });
                 const dpr = Math.min(window.devicePixelRatio || 1, 2);
-                pdfCanvas.width = Math.max(1, Math.floor(viewport.width * dpr));
-                pdfCanvas.height = Math.max(1, Math.floor(viewport.height * dpr));
-                pdfCanvas.style.width = Math.floor(viewport.width) + 'px';
-                pdfCanvas.style.height = Math.floor(viewport.height) + 'px';
-                pdfCanvas.hidden = false;
-                pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                const task = page.render({ canvasContext: pdfCtx, viewport: viewport });
-                pdfState.task = task;
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.floor(viewport.width * dpr));
+                canvas.height = Math.max(1, Math.floor(viewport.height * dpr));
+                const ctx = canvas.getContext('2d');
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                box.el.appendChild(canvas);
+                rec.canvas = canvas;
+                const task = base.page.render({ canvasContext: ctx, viewport: viewport });
+                rec.task = task;
                 await task.promise;
-                if (token !== pdfState.token) return;
-                pdfState.task = null;
+                if (pdfState.rendering.get(i) === rec) pdfState.rendering.delete(i);
+                if (rt !== pdfState.renderToken) { canvas.remove(); return; }
+                pdfState.rendered.set(i, { canvas: canvas });
                 pdfLoading.hidden = true;
                 pdfError.hidden = true;
                 updateTools();
-                pdfScroll.scrollTop = 0;
-                pdfScroll.scrollLeft = Math.max(0, (pdfCanvas.offsetWidth - pdfScroll.clientWidth) / 2);
+                scheduleRender();
             } catch (err) {
+                if (pdfState.rendering.get(i) === rec) pdfState.rendering.delete(i);
+                if (rec.canvas) rec.canvas.remove();
                 if (err && err.name === 'RenderingCancelledException') return;
-                if (token !== pdfState.token) return;
-                console.error('PDF render error', err);
-                showPdfError(pdfState.url);
+                if (rt !== pdfState.renderToken) return;
+                console.error('PDF render error', i, err);
+                if (i === pdfState.page && pdfState.rendered.size === 0) showPdfError(pdfState.url);
+                else scheduleRender();
             }
         }
 
         function goToPage(n) {
             if (!pdfState.pages) return;
             const next = Math.min(pdfState.pages, Math.max(1, n));
-            if (next === pdfState.page) return;
+            if (next === pdfState.page) {
+                scrollToPage(next, true);
+                return;
+            }
             pdfState.page = next;
-            renderPage();
+            updateTools();
+            scrollToPage(next, true);
+            scheduleRender();
         }
 
         function setZoom(z) {
@@ -1441,7 +1596,7 @@
             const next = Math.min(3, Math.max(1, Math.round(z * 100) / 100));
             if (next === pdfState.zoom) return;
             pdfState.zoom = next;
-            renderPage();
+            layoutPages();
         }
 
         function closeModal() {
@@ -1471,38 +1626,34 @@
         document.addEventListener('keydown', e => {
             if (!modal.classList.contains('open')) return;
             if (e.key === 'Escape') { closeModal(); return; }
-            if (e.key === 'ArrowLeft') { e.preventDefault(); goToPage(pdfState.page - 1); }
-            if (e.key === 'ArrowRight') { e.preventDefault(); goToPage(pdfState.page + 1); }
             if ((e.ctrlKey || e.metaKey) && ['p', 's', 'u'].indexOf(e.key.toLowerCase()) !== -1) {
                 e.preventDefault();
             }
         });
 
-        let touchX = 0, touchY = 0, touchT = 0;
-        pdfScroll.addEventListener('touchstart', e => {
-            if (e.touches.length !== 1) return;
-            touchX = e.touches[0].clientX;
-            touchY = e.touches[0].clientY;
-            touchT = Date.now();
-        }, { passive: true });
-        pdfScroll.addEventListener('touchend', e => {
-            if (!pdfState.pages || e.changedTouches.length !== 1 || pdfState.zoom > 1) return;
-            const dx = e.changedTouches[0].clientX - touchX;
-            const dy = e.changedTouches[0].clientY - touchY;
-            const dt = Date.now() - touchT;
-            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 700) {
-                goToPage(pdfState.page + (dx < 0 ? 1 : -1));
-            }
+        pdfScroll.addEventListener('scroll', () => {
+            if (!pdfState.pages || pdfState.usingFrame) return;
+            if (scrollRaf) return;
+            scrollRaf = requestAnimationFrame(() => {
+                scrollRaf = 0;
+                if (!pdfState.pages || pdfState.usingFrame) return;
+                const p = currentPageFromScroll();
+                if (p !== pdfState.page) {
+                    pdfState.page = p;
+                    updateTools();
+                }
+                scheduleRender();
+            });
         }, { passive: true });
 
         window.addEventListener('resize', () => {
             if (!modal.classList.contains('open') || !pdfState.doc || pdfState.usingFrame) return;
             clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => renderPage(), 250);
+            resizeTimer = setTimeout(() => layoutPages(), 250);
         });
         window.addEventListener('orientationchange', () => {
             if (!modal.classList.contains('open') || !pdfState.doc || pdfState.usingFrame) return;
-            setTimeout(() => renderPage(), 350);
+            setTimeout(() => layoutPages(), 350);
         });
 
         window.addEventListener('beforeprint', () => {
