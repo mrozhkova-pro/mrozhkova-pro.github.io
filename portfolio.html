@@ -1240,7 +1240,8 @@
 
     <script src="pdfjs/pdf.min.js"></script>
     <script>
-        const io = new IntersectionObserver(entries => {
+        const revealEls = document.querySelectorAll('.reveal');
+        const io = window.IntersectionObserver ? new IntersectionObserver(entries => {
             entries.forEach(e => {
                 if (e.isIntersecting) {
                     e.target.classList.add('visible');
@@ -1250,8 +1251,11 @@
                     io.unobserve(e.target);
                 }
             });
-        }, { threshold: .15 });
-        document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+        }, { threshold: 0.01 }) : null;
+        revealEls.forEach(el => {
+            if (io) io.observe(el);
+            else el.classList.add('visible');
+        });
 
         const modal = document.getElementById('modal');
         const modalTitle = document.getElementById('modalTitle');
