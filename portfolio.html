@@ -967,10 +967,15 @@
         }
         .ios .pf-preview::before { display: none; }
         .ios .book3d {
-            transform: none !important;
+            transform: perspective(1000px) rotateY(-22deg) rotateX(6deg) !important;
             transform-style: flat;
+            transform-origin: center 75%;
+            transition: transform .45s ease;
             will-change: auto;
             max-width: 100%;
+        }
+        .ios .pf-card.is-open .book3d {
+            transform: perspective(1000px) rotateY(-3deg) rotateX(2deg) !important;
         }
         .ios .book3d img {
             transform: none;
@@ -978,6 +983,7 @@
             height: 175px;
             max-width: 100%;
             max-height: none;
+            box-shadow: 8px 10px 22px rgba(0, 45, 45, .22);
         }
         .ios .book3d .book3d-pages,
         .ios .book3d .book3d-shadow { display: none; }
@@ -1805,6 +1811,15 @@
                 });
             }
         })();
+    </script>
+    <script>
+        if (document.documentElement.classList.contains('ios')) {
+            document.querySelectorAll('.pf-preview').forEach(preview => {
+                preview.addEventListener('click', () => {
+                    preview.closest('.pf-card').classList.toggle('is-open');
+                });
+            });
+        }
     </script>
 
 </body>
